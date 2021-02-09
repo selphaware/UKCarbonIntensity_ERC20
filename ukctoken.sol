@@ -110,15 +110,13 @@ library StringOp {
  */
 contract Ownable {
     address public central_bank;
-    address public liquidity_bank;
 
     /**
       * @dev The Ownable constructor sets the original `owner` of the contract to the sender
       * account.
       */
     constructor() public {
-        central_bank = 0xd8E5368a6c37069A4C9C2a23f46FF14D98eb051e;  // msg.sender;
-        liquidity_bank = 0xb51C1888c35D3bEd065429bb46FaDdB666c446f7;
+        central_bank = msg.sender;
     }
 
     /**
@@ -126,16 +124,6 @@ contract Ownable {
       */
     modifier onlyCentralBank() {
         require(msg.sender == central_bank);
-        _;
-    }
-    
-    modifier onlyLiquidityBank() {
-        require(msg.sender == liquidity_bank);
-        _;
-    }
-
-    modifier onlyBank() {
-        require(msg.sender == liquidity_bank || msg.sender == central_bank);
         _;
     }
 
@@ -148,13 +136,6 @@ contract Ownable {
             central_bank = newOwner;
         }
     }
-
-    function transferOwnershipLiquidityBank(address newOwner) public onlyBank {
-        if (newOwner != address(0)) {
-            liquidity_bank = newOwner;
-        }
-    }
-
 }
 
 /**
@@ -360,12 +341,8 @@ contract BlackList is Ownable, BasicToken {
         return central_bank;
     }
 
-    function getLiquidityBank() external constant returns (address) {
-        return liquidity_bank;
-    }
-
     mapping (address => bool) public isBlackListed;
-    
+
     function addBlackList (address _evilUser) public onlyCentralBank {
         isBlackListed[_evilUser] = true;
         emit AddedBlackList(_evilUser);
@@ -410,7 +387,6 @@ contract UKCarbonIntensityToken is Pausable, StandardToken, BlackList, usingProv
     uint public decimals;
     address public upgradedAddress;
     bool public deprecated;
-    uint public reserve;
 
     // UK Carbon Intensity attributes
     uint256 public intensity_actual;
@@ -419,12 +395,9 @@ contract UKCarbonIntensityToken is Pausable, StandardToken, BlackList, usingProv
     // delta attributes
     bool public negative;
     uint256 public intensity_delta;
-    
+
     // burn/min attributes
     uint256 public burnmint_factor;
-    
-    // init transfer variables
-    bool public initialized_transfer;
 
     event AcquireCarbonIntensity();
     event CarbonIntensityAcquired(string intensity_val);
@@ -435,8 +408,6 @@ contract UKCarbonIntensityToken is Pausable, StandardToken, BlackList, usingProv
     event NegativeIntensityDelta_BurningTokens(uint256 amount);
     event PositiveIntensityDelta_MintingTokens(uint256 amount);
     event DeltaNotZero();
-    event InitializedTransferAlreadyDone();
-    event InitializedTransfer();
     event LogError(string errorMsg);
 
     //  The contract can be initialized with a number of tokens
@@ -452,50 +423,22 @@ contract UKCarbonIntensityToken is Pausable, StandardToken, BlackList, usingProv
         name = "UKCarbonIntensityToken";
         symbol = "UKCI";
         decimals = 18;
-        reserve = 20;  // central bank reserve = 20%
         deprecated = false;
-        initialized_transfer = false;
-        
+
         // initial supply
         balances[central_bank] = _totalSupply;
         emit Transfer(address(0), central_bank, _totalSupply);
-        
-        // initial transfer of funds to liquidity_bank and first_trading_account
-        initialize_transfers();
-        
+
         // initialise carbon intensity data acquisition
         _update();
     }
-    
+
     // transfer funds from central bank to _to
     function transfer_funds(address _to, uint amount) private {
         require(balances[central_bank] >= amount);
         balances[_to] += amount;
         balances[central_bank] -= amount;
         emit Transfer(central_bank, _to, amount);
-    }
-    
-    // initial transfer of funds to liquidity_bank and first_trading_account
-    function initialize_transfers() private {
-        if (!initialized_transfer) {
-            uint256 first_trading_amount = 2000000000000000000000000;  // first trading account to have 2M tokens
-            uint fullpct = 100;
-            address first_trading_account = 0x12839E12f6Ba954502826465e179B4e253df0d79;
-            uint256 liquidity_supply = (_totalSupply.mul(fullpct.sub(reserve)).div(fullpct)).sub(first_trading_amount);
-            transfer_funds(liquidity_bank, liquidity_supply);
-            transfer_funds(first_trading_account, first_trading_amount);
-            uint256 calc_total_supply = liquidity_supply.add(balances[central_bank]).add(first_trading_amount);
-            
-            if (_totalSupply != calc_total_supply) {
-                emit LogError("initialize_transfers, cancelling: calculation error.");
-                emit LogError(calc_total_supply.uintToString());
-            } else {
-                emit InitializedTransfer();
-                initialized_transfer = true;
-            }
-        } else {
-            emit InitializedTransferAlreadyDone();
-        }
     }
 
     // Buy UKCI Tokens with ETH
@@ -504,11 +447,11 @@ contract UKCarbonIntensityToken is Pausable, StandardToken, BlackList, usingProv
     function buy_token_in_eth_amount(uint256 amount) payable public whenNotPaused {
         require(msg.value == amount);
         uint256 token_amount = calculate_token_amount(amount);
-        return transferFrom(liquidity_bank, msg.sender, token_amount);
+        return transferFrom(central_bank, msg.sender, token_amount);
     }
-    
+
     function calculate_token_amount(uint256 amount) public view returns (uint256) {
-        return balances[liquidity_bank].div(address(this).balance.div(amount));
+        return balances[central_bank].div(address(this).balance.div(amount));
     }
 
     /*function sell_token_in_eth_amount(uint256 amount) public {
